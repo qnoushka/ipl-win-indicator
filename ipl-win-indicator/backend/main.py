@@ -9,7 +9,6 @@ from data import TEAMS, MATCHES, calculate_win_probability
 
 app = FastAPI(title="IPL Win Indicator API")
 
-# This allows your React frontend to talk to this server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,8 +21,6 @@ SECRET_KEY = "change-this-in-production"
 ALGORITHM = "HS256"
 security = HTTPBearer(auto_error=False)
 
-# ── DATABASE SETUP ────────────────────────────────────────────────────────────
-
 def get_db():
     conn = sqlite3.connect("ipl.db")
     conn.row_factory = sqlite3.Row
@@ -35,7 +32,6 @@ def get_db():
 def init_db():
     conn = sqlite3.connect("ipl.db")
     c = conn.cursor()
-    # Table to store registered users
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -43,7 +39,6 @@ def init_db():
         password_hash TEXT NOT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )""")
-    # Table to store each user's favourite teams
     c.execute("""CREATE TABLE IF NOT EXISTS favorites (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -54,12 +49,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-init_db()  # runs once when the server starts
-
-# ── AUTH HELPERS ──────────────────────────────────────────────────────────────
+init_db()
 
 def make_token(user_id: int, email: str):
-    # Creates a JWT token that expires in 7 days
     payload = {
         "sub": str(user_id),
         "email": email,
@@ -68,7 +60,6 @@ def make_token(user_id: int, email: str):
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    # Reads the token from request header and returns the user info
     if not credentials:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -77,10 +68,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# ── REQUEST BODY SCHEMAS ──────────────────────────────────────────────────────
-
 class RegisterIn(BaseModel):
-    name: str
+    full_name: str
     email: str
     password: str
 
@@ -100,15 +89,13 @@ class PredictIn(BaseModel):
     wickets: Optional[int] = 0
     overs: Optional[float] = 0.0
 
-# ── AUTH ROUTES ───────────────────────────────────────────────────────────────
-
 @app.post("/auth/register")
 def register(body: RegisterIn, db: sqlite3.Connection = Depends(get_db)):
     pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
     try:
         db.execute(
             "INSERT INTO users (name, email, password_hash) VALUES (?,?,?)",
-            (body.name, body.email, pw_hash)
+            (body.full_name, body.email, pw_hash)
         )
         db.commit()
         row = db.execute(
@@ -135,8 +122,6 @@ def me(user=Depends(get_current_user), db: sqlite3.Connection = Depends(get_db))
     ).fetchone()
     return dict(row)
 
-# ── TEAM ROUTES ───────────────────────────────────────────────────────────────
-
 @app.get("/teams")
 def get_teams():
     return TEAMS
@@ -148,8 +133,6 @@ def get_team(team_id: str):
         raise HTTPException(status_code=404, detail="Team not found")
     return team
 
-# ── MATCH ROUTES ──────────────────────────────────────────────────────────────
-
 @app.get("/matches")
 def get_matches(season: Optional[int] = None, team: Optional[str] = None):
     result = MATCHES
@@ -158,8 +141,6 @@ def get_matches(season: Optional[int] = None, team: Optional[str] = None):
     if team:
         result = [m for m in result if team in (m["team_a"], m["team_b"])]
     return result
-
-# ── PREDICT ROUTE ─────────────────────────────────────────────────────────────
 
 @app.post("/predict")
 def predict(body: PredictIn):
@@ -175,8 +156,6 @@ def predict(body: PredictIn):
         toss=body.toss, innings=body.innings,
         runs=body.runs, wickets=body.wickets, overs=body.overs
     )
-
-# ── FAVORITES ROUTES ──────────────────────────────────────────────────────────
 
 @app.get("/favorites")
 def get_favorites(user=Depends(get_current_user), db: sqlite3.Connection = Depends(get_db)):
