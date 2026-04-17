@@ -1,5 +1,6 @@
-node_modules/
 __pycache__/
 *.pyc
+ipl.db
+node_modules/
+dist/
 .env
-*.db
